@@ -27,7 +27,7 @@ pip install datasets pillow pyarrow tqdm sickle pdfplumber pymupdf requests pyth
 All datasets stored as `data/<name>/train.parquet` with embedded PNG bytes.
 Schema: `source`, `file_name`, `text`, `image`.
 
-Generate JSONL splits (90/5/5):
+Generate JSONL splits:
 
 ```bash
 python build_ocr_dataset.py hf --gen
@@ -110,9 +110,12 @@ bash merge-lora.sh
 
 | Eval set | Model | Avg NED ↓ | Exact match ↑ |
 |----------|------|----------:|-------------:|
-| digi-natlib | base | 0.2215 | 3.0% |
-| digi-natlib | lora | 0.1643 | 4.18% |
-| digi-natlib | sft | 0.1719 | 4.21% |
+| hf | base | 0.1289 | 35.96% |
+| hf | lora01 | 0.0246 | 73.49% |
+| hf | lora02 | 0.0239 | 74.79% |
+| digi-natlib | base | 0.2215 | 3.04% |
+| digi-natlib | lora01 | 0.0182 | 59.2% |
+| digi-natlib | lora02 | 0.0033 | 93.86% |
 
 ---
 
