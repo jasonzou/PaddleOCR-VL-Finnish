@@ -1,4 +1,4 @@
-# PaddleOCR-VL-1.5 Finnish
+# PaddleOCR-VL-1.5 Finnish with Multiple-Stage LoRA Fine-Tune
 
 Fine-tuning [PaddleOCR-VL-1.5](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5) for Finnish OCR using LoRA SFT, built for the Paddle Global Model Derivative Competition.
 
