@@ -37,7 +37,6 @@ HF_DATASETS = [
 
 HF_OUT_DIR  = "./data/hf"
 HF_GEN_DIR  = "./data/hf_gen"
-HF_PARQUET  = "train.parquet"
 
 
 def _img_to_bytes(img, PILImage) -> bytes | None:
@@ -74,79 +73,103 @@ def _write_parquet(sources, file_names, texts, image_bytes_list, parquet):
     return len(table)
 
 
+SPLITS = ["train", "test", "validation"]
+PARQUET_NAMES = {
+    "train": "{prefix}_train.parquet",
+    "test": "{prefix}_test.parquet",
+    "validation": "{prefix}_validation.parquet",
+}
+JSONL_NAMES = {"train": "train.jsonl", "test": "test.jsonl", "validation": "eval.jsonl"}
+
+
 def cmd_hf(args):
     try:
         from datasets import load_dataset
         from PIL import Image as PILImage
-        import pyarrow as pa
-        import pyarrow.parquet as pq
     except ImportError as e:
-        print(f"Missing dependency: {e}\nRun: pip install datasets pillow pyarrow", file=sys.stderr)
+        print(f"Missing dependency: {e}\nRun: pip install datasets pillow", file=sys.stderr)
         sys.exit(1)
+
+    if args.hf_mirror:
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
     out_dir    = Path(args.hf_out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for ds_name in HF_DATASETS:
         prefix  = ds_name.split("/")[-1].replace("-", "_")
-        parquet = out_dir / f"{prefix}.parquet"
-
-        if parquet.exists():
-            print(f"  [skip] {parquet} already exists")
-            continue
-
-        print(f"  Loading {ds_name} ...")
+        print(f"  Checking {ds_name} ...")
         try:
-            ds = load_dataset(ds_name, split="train")
+            ds_info = load_dataset(ds_name)
         except Exception as e:
             print(f"  ERROR loading {ds_name}: {e}")
             continue
 
-        img_col  = next((c for c in ("image", "img", "image_path") if c in ds.column_names), None)
-        text_col = next((c for c in ("text", "transcript", "label", "ground_truth", "ocr_text") if c in ds.column_names), None)
-        name_col = next((c for c in ("file_name", "filename", "id") if c in ds.column_names), None)
-
-        if img_col is None or text_col is None:
-            print(f"  WARNING: could not auto-detect columns in {ds_name}. Columns: {ds.column_names}")
-            continue
-
-        sources, file_names, texts, image_bytes_list = [], [], [], []
-        written = 0
-        for i, row in enumerate(tqdm(ds, desc=prefix, unit="img", leave=False)):
-            text = row[text_col]
-            if not isinstance(text, str) or not text.strip():
+        available_splits = list(ds_info.keys())
+        for split in SPLITS:
+            if split not in available_splits:
                 continue
-            img_bytes = _img_to_bytes(row[img_col], PILImage)
-            if img_bytes is None:
+            parquet = out_dir / PARQUET_NAMES[split].format(prefix=prefix)
+            if parquet.exists():
+                print(f"  [skip] {parquet.name} already exists")
                 continue
-            fname = row[name_col] if name_col else f"{i:08d}"
-            if not str(fname).endswith(".png"):
-                fname = f"{fname}.png"
-            sources.append(prefix)
-            file_names.append(str(fname))
-            texts.append(text.strip())
-            image_bytes_list.append(img_bytes)
-            written += 1
 
-        if not sources:
-            print(f"  {ds_name}: no valid rows")
-            continue
+            print(f"  Loading {ds_name} ({split}) ...")
+            try:
+                ds = load_dataset(ds_name, split=split)
+            except Exception as e:
+                print(f"  ERROR loading {ds_name}/{split}: {e}")
+                continue
 
-        n = _write_parquet(sources, file_names, texts, image_bytes_list, parquet)
-        mb = parquet.stat().st_size / 1024 / 1024
-        print(f"  {ds_name}: {written} rows → {parquet.name} ({mb:.1f} MB)")
+            img_col  = next((c for c in ("image", "img", "image_path") if c in ds.column_names), None)
+            text_col = next((c for c in ("text", "transcript", "label", "ground_truth", "ocr_text") if c in ds.column_names), None)
+            name_col = next((c for c in ("file_name", "filename", "id") if c in ds.column_names), None)
+
+            if img_col is None or text_col is None:
+                print(f"  WARNING: could not auto-detect columns in {ds_name}. Columns: {ds.column_names}")
+                continue
+
+            sources, file_names, texts, image_bytes_list = [], [], [], []
+            written = 0
+            for i, row in enumerate(tqdm(ds, desc=f"{prefix}_{split}", unit="img", leave=False)):
+                text = row[text_col]
+                if not isinstance(text, str) or not text.strip():
+                    continue
+                img_bytes = _img_to_bytes(row[img_col], PILImage)
+                if img_bytes is None:
+                    continue
+                fname = row[name_col] if name_col else f"{i:08d}"
+                if not str(fname).endswith(".png"):
+                    fname = f"{fname}.png"
+                sources.append(prefix)
+                file_names.append(str(fname))
+                texts.append(text.strip())
+                image_bytes_list.append(img_bytes)
+                written += 1
+
+            if not sources:
+                print(f"  {ds_name}/{split}: no valid rows")
+                continue
+
+            n = _write_parquet(sources, file_names, texts, image_bytes_list, parquet)
+            mb = parquet.stat().st_size / 1024 / 1024
+            print(f"  {ds_name}/{split}: {written} rows → {parquet.name} ({mb:.1f} MB)")
 
     if args.gen:
         for ds_name in HF_DATASETS:
             prefix = ds_name.split("/")[-1].replace("-", "_")
-            parquet = out_dir / f"{prefix}.parquet"
-            if parquet.exists():
-                gen_dir = Path(args.hf_gen_dir) / prefix
-                _hf_gen(parquet, gen_dir, args.train_ratio, args.eval_ratio)
+            for split in SPLITS:
+                parquet = out_dir / PARQUET_NAMES[split].format(prefix=prefix)
+                if parquet.exists():
+                    gen_dir = Path(args.hf_gen_dir) / prefix
+                    if split == "train":
+                        _hf_gen_with_split(parquet, gen_dir, args.train_ratio, args.eval_ratio)
+                    else:
+                        _hf_gen_direct(parquet, gen_dir, JSONL_NAMES[split], split)
 
 
-def _hf_gen(parquet: Path, gen_dir: Path, train_ratio: float, eval_ratio: float) -> None:
-    """Generate train/eval/test JSONL from the merged parquet."""
+def _hf_gen_with_split(parquet: Path, gen_dir: Path, train_ratio: float, eval_ratio: float) -> None:
+    """Generate train/eval/test JSONL from the merged parquet with train/eval/test split."""
     try:
         import pyarrow.parquet as pq
     except ImportError as e:
@@ -221,6 +244,55 @@ def _hf_gen(parquet: Path, gen_dir: Path, train_ratio: float, eval_ratio: float)
             for row in rows:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
         print(f"  {split_name}: {len(rows)} entries → {out_path}")
+
+
+def _hf_gen_direct(parquet: Path, gen_dir: Path, out_filename: str, split_name: str = None) -> None:
+    """Generate a single JSONL directly from parquet (no split)."""
+    try:
+        import pyarrow.parquet as pq
+    except ImportError as e:
+        print(f"Missing dependency: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    gen_dir.mkdir(parents=True, exist_ok=True)
+    images_dir = gen_dir / "images"
+    images_dir.mkdir(exist_ok=True)
+
+    pf = pq.ParquetFile(parquet)
+    n = pf.metadata.num_rows
+    print(f"  Reading {n} rows from {parquet} ...")
+
+    out_path = gen_dir / out_filename
+    with open(out_path, "w", encoding="utf-8") as f:
+        for batch in tqdm(pf.iter_batches(batch_size=10000), desc="writing rows", unit="batch"):
+            batch_dict = batch.to_pydict()
+            sources = batch_dict["source"]
+            file_names = batch_dict["file_name"]
+            texts = batch_dict["text"]
+            images_col = batch_dict["image"]
+
+            for src, fname, text, img_struct in zip(sources, file_names, texts, images_col):
+                if not isinstance(text, str) or not text.strip():
+                    continue
+                path_prefix = ""
+                if fname and "/" in fname:
+                    path_prefix = fname.split("/")[0] + "_"
+                    fname = fname.split("/")[-1]
+                img_filename = f"{path_prefix}{fname}"
+                img_dest = images_dir / img_filename
+                if not img_dest.exists():
+                    raw = img_struct.get("bytes") if isinstance(img_struct, dict) else img_struct["bytes"]
+                    img_dest.write_bytes(raw)
+                entry = {
+                    "messages": [
+                        {"role": "user", "content": "<image>OCR:"},
+                        {"role": "assistant", "content": text},
+                    ],
+                    "images": [f"./images/{img_filename}"],
+                }
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    print(f"  Wrote {n} entries → {out_path}")
 
 
 # ── subcommand: digi-natlib ───────────────────────────────────────────────────
@@ -327,7 +399,7 @@ def cmd_digi_natlib(args):
         print(f"\n  Wrote {len(table)} rows → {parquet} ({mb:.1f} MB)")
 
     if args.gen:
-        _hf_gen(parquet, Path(args.dn_gen_dir), args.train_ratio, args.eval_ratio)
+        _hf_gen_with_split(parquet, Path(args.dn_gen_dir), args.train_ratio, args.eval_ratio)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -344,6 +416,7 @@ def main():
     p_hf = sub.add_parser("hf", parents=[shared], help="Merge HF datasets → data/hf/train.parquet")
     p_hf.add_argument("--hf-out-dir",  default=os.environ.get("HF_OUT_DIR",  HF_OUT_DIR))
     p_hf.add_argument("--hf-gen-dir",  default=os.environ.get("HF_GEN_DIR",  HF_GEN_DIR))
+    p_hf.add_argument("--hf-mirror",   action="store_true", help="Use HF_ENDPOINT=https://hf-mirror.com")
     p_hf.add_argument("--gen",         action="store_true", help="Also generate train/eval/test JSONL in --hf-gen-dir")
     p_hf.add_argument("--train-ratio", type=float, default=float(os.environ.get("TRAIN_RATIO", "0.90")))
     p_hf.add_argument("--eval-ratio",  type=float, default=float(os.environ.get("EVAL_RATIO",  "0.05")))
