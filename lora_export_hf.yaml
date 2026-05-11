@@ -1,5 +1,5 @@
 ### model
 fine_tuning: LoRA
-model_name_or_path: ./models/PaddleOCR-VL-1.5
-output_dir: /root/autodl-fs/lora
+model_name_or_path: /root/autodl-fs/models/PaddleOCR-VL-1.5
+output_dir: /root/autodl-fs/lora01
 copy_custom_file_list: "configuration_paddleocr_vl.py image_processing_paddleocr_vl.py modeling_paddleocr_vl.py processing_paddleocr_vl.py inference.yml"

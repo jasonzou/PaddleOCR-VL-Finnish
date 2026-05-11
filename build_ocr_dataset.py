@@ -2,10 +2,10 @@
 OCR dataset builder.
 
 Subcommands:
-  hf           Merge all caveman273/* HF datasets → data/hf/train.parquet
-                 --gen  also generate data/hf_gen/train.jsonl, eval.jsonl, test.jsonl
+  hf           Download each caveman273/* HF dataset → data/hf/{dataset}.parquet
+               --gen  also generate data/hf_gen/{dataset}/train.jsonl, eval.jsonl, test.jsonl
   digi-natlib  Clone sdrobac/nodalida2017 and build data/digi-natlib/train.parquet
-                 --gen  also generate data/digi-natlib-gen/train.jsonl, eval.jsonl, test.jsonl
+               --gen  also generate data/digi-natlib-gen/train.jsonl, eval.jsonl, test.jsonl
 """
 
 import argparse
@@ -60,6 +60,20 @@ def _img_to_bytes(img, PILImage) -> bytes | None:
     return None
 
 
+def _write_parquet(sources, file_names, texts, image_bytes_list, parquet):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    table = pa.table({
+        "source":    pa.array(sources,           pa.string()),
+        "file_name": pa.array(file_names,        pa.string()),
+        "text":      pa.array(texts,             pa.string()),
+        "image":     pa.array([{"bytes": b, "path": n} for b, n in zip(image_bytes_list, file_names)],
+                              pa.struct([pa.field("bytes", pa.binary()), pa.field("path", pa.string())])),
+    })
+    pq.write_table(table, parquet, compression="snappy")
+    return len(table)
+
+
 def cmd_hf(args):
     try:
         from datasets import load_dataset
@@ -71,63 +85,64 @@ def cmd_hf(args):
         sys.exit(1)
 
     out_dir    = Path(args.hf_out_dir)
-    parquet    = out_dir / HF_PARQUET
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if parquet.exists():
-        print(f"  [skip] {parquet} already exists (delete to re-download)")
-    else:
+    for ds_name in HF_DATASETS:
+        prefix  = ds_name.split("/")[-1].replace("-", "_")
+        parquet = out_dir / f"{prefix}.parquet"
+
+        if parquet.exists():
+            print(f"  [skip] {parquet} already exists")
+            continue
+
+        print(f"  Loading {ds_name} ...")
+        try:
+            ds = load_dataset(ds_name, split="train")
+        except Exception as e:
+            print(f"  ERROR loading {ds_name}: {e}")
+            continue
+
+        img_col  = next((c for c in ("image", "img", "image_path") if c in ds.column_names), None)
+        text_col = next((c for c in ("text", "transcript", "label", "ground_truth", "ocr_text") if c in ds.column_names), None)
+        name_col = next((c for c in ("file_name", "filename", "id") if c in ds.column_names), None)
+
+        if img_col is None or text_col is None:
+            print(f"  WARNING: could not auto-detect columns in {ds_name}. Columns: {ds.column_names}")
+            continue
+
         sources, file_names, texts, image_bytes_list = [], [], [], []
-
-        for ds_name in HF_DATASETS:
-            print(f"  Loading {ds_name} ...")
-            try:
-                ds = load_dataset(ds_name, split="train")
-            except Exception as e:
-                print(f"  ERROR loading {ds_name}: {e}")
+        written = 0
+        for i, row in enumerate(tqdm(ds, desc=prefix, unit="img", leave=False)):
+            text = row[text_col]
+            if not isinstance(text, str) or not text.strip():
                 continue
-
-            img_col  = next((c for c in ("image", "img", "image_path") if c in ds.column_names), None)
-            text_col = next((c for c in ("text", "transcript", "label", "ground_truth", "ocr_text") if c in ds.column_names), None)
-            name_col = next((c for c in ("file_name", "filename", "id") if c in ds.column_names), None)
-
-            if img_col is None or text_col is None:
-                print(f"  WARNING: could not auto-detect columns in {ds_name}. Columns: {ds.column_names}")
+            img_bytes = _img_to_bytes(row[img_col], PILImage)
+            if img_bytes is None:
                 continue
+            fname = row[name_col] if name_col else f"{i:08d}"
+            if not str(fname).endswith(".png"):
+                fname = f"{fname}.png"
+            sources.append(prefix)
+            file_names.append(str(fname))
+            texts.append(text.strip())
+            image_bytes_list.append(img_bytes)
+            written += 1
 
-            prefix  = ds_name.split("/")[-1].replace("-", "_")
-            written = 0
-            for i, row in enumerate(tqdm(ds, desc=prefix, unit="img", leave=False)):
-                text = row[text_col]
-                if not isinstance(text, str) or not text.strip():
-                    continue
-                img_bytes = _img_to_bytes(row[img_col], PILImage)
-                if img_bytes is None:
-                    continue
-                fname = row[name_col] if name_col else f"{i:08d}"
-                if not str(fname).endswith(".png"):
-                    fname = f"{fname}.png"
-                sources.append(prefix)
-                file_names.append(str(fname))
-                texts.append(text.strip())
-                image_bytes_list.append(img_bytes)
-                written += 1
+        if not sources:
+            print(f"  {ds_name}: no valid rows")
+            continue
 
-            print(f"  {ds_name}: {written} rows")
-
-        table = pa.table({
-            "source":    pa.array(sources,           pa.string()),
-            "file_name": pa.array(file_names,        pa.string()),
-            "text":      pa.array(texts,             pa.string()),
-            "image":     pa.array([{"bytes": b, "path": n} for b, n in zip(image_bytes_list, file_names)],
-                                  pa.struct([pa.field("bytes", pa.binary()), pa.field("path", pa.string())])),
-        })
-        pq.write_table(table, parquet, compression="snappy")
+        n = _write_parquet(sources, file_names, texts, image_bytes_list, parquet)
         mb = parquet.stat().st_size / 1024 / 1024
-        print(f"\n  Wrote {len(table)} rows → {parquet} ({mb:.1f} MB)")
+        print(f"  {ds_name}: {written} rows → {parquet.name} ({mb:.1f} MB)")
 
     if args.gen:
-        _hf_gen(parquet, Path(args.hf_gen_dir), args.train_ratio, args.eval_ratio)
+        for ds_name in HF_DATASETS:
+            prefix = ds_name.split("/")[-1].replace("-", "_")
+            parquet = out_dir / f"{prefix}.parquet"
+            if parquet.exists():
+                gen_dir = Path(args.hf_gen_dir) / prefix
+                _hf_gen(parquet, gen_dir, args.train_ratio, args.eval_ratio)
 
 
 def _hf_gen(parquet: Path, gen_dir: Path, train_ratio: float, eval_ratio: float) -> None:

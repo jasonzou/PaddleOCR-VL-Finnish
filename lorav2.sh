@@ -1,0 +1,2 @@
+export FLAGS_enable_dataset_debug=false
+CUDA_VISIBLE_DEVICES=0 paddleformers-cli train configs/stage2_digi.yaml
