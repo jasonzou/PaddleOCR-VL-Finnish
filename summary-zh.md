@@ -1,7 +1,7 @@
 # PaddleOCR-VL-Finnish — 项目概述
 
 ### 概述
-**PaddleOCR-VL-Finnish** 使用 **LoRA**（rank-8）监督微调技术对 **PaddleOCR-VL-1.5**（一个视觉-语言 OCR 模型）进行芬兰语文字识别微调，项目面向 **Paddle 全球模型衍生赛**。
+**PaddleOCR-VL-Finnish** 使用 **LoRA**监督微调技术对 **PaddleOCR-VL-1.5**（一个视觉-语言 OCR 模型）进行芬兰语文字识别微调，项目面向 **Paddle 全球模型衍生赛**。
 
 ---
 
