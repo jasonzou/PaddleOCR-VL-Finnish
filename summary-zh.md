@@ -19,7 +19,7 @@
 
 ### 1.2 搜索公开数据集
 
-发现了 Kansallisarkisto 的 AIDA_ocr_training_data 数据集（https://huggingface.co/datasets/Kansallisarkisto/AIDA_ocr_training_data）。然而该数据集创建时间较早，包含合成数据、打字数据和手写数据。此外，该数据集的格式需要针对本项目进行调整。我移除了合成数据并修改了格式，然后在 Huggingface 上创建了三个数据集：
+发现了 Kansallisarkisto 的 AIDA_ocr_training_data 数据集（https://huggingface.co/datasets/Kansallisarkisto/AIDA_ocr_training_data). 然而该数据集创建时间较早，包含合成数据、打字数据和手写数据。此外，该数据集的格式需要针对本项目进行调整。我移除了合成数据并修改了格式，然后在 Huggingface 上创建了三个数据集：
 - https://huggingface.co/datasets/caveman273/aida-handwritten
 - https://huggingface.co/datasets/caveman273/aida-typewritten
 - https://huggingface.co/datasets/caveman273/aida-ship-info
