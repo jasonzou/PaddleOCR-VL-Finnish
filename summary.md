@@ -1,7 +1,7 @@
 # PaddleOCR-VL-Finnish — Project Summary
 
 ### Overview
-**PaddleOCR-VL-Finnish** fine-tunes **PaddleOCR-VL-1.5** (a Vision-Language OCR model) for Finnish language text recognition using **LoRA** (rank-8) supervised fine-tuning, built for the **Paddle Global Model Derivative Competition**.
+**PaddleOCR-VL-Finnish** fine-tunes **PaddleOCR-VL-1.5** (a Vision-Language OCR model) for Finnish language text recognition using **LoRA** supervised fine-tuning, built for the **Paddle Global Model Derivative Competition**.
 
 ---
 
