@@ -1,0 +1,85 @@
+### data
+train_dataset_type: "messages,messages,messages,messages,messages,messages,messages,messages"
+eval_dataset_type: "messages,messages,messages,messages,messages,messages,messages,messages"
+max_seq_len: 16384
+padding_free: True
+truncate_packing: False
+dataloader_num_workers: 24
+mix_strategy: concat
+template_backend: custom
+template: paddleocr_vl_v15
+custom_register_path: ./vl_v15_template.py
+
+### model
+model_name_or_path: /root/autodl-fs/models/PaddleOCR-VL-1.5
+_attn_implementation: flashmask          
+lora: true
+lora_rank: 8
+copy_custom_file_list: "configuration_paddleocr_vl.py image_processor_paddleocr_vl.py modeling_paddleocr_vl.py processing_paddleocr_vl.py inference.yml"
+
+### finetuning (显存安全配置：batch=4, accum=32, 有效批次=128)
+stage: VL-SFT
+fine_tuning: lora
+seed: 23
+do_train: true
+do_eval: true
+per_device_eval_batch_size: 8
+per_device_train_batch_size: 16            
+gradient_accumulation_steps: 8           
+eval_steps: 200                           
+evaluation_strategy: steps
+save_steps: 200
+save_strategy: steps
+logging_steps: 1
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+min_lr: 5.0e-5
+weight_decay: 0.1
+adam_epsilon: 1.0e-8
+adam_beta1: 0.9
+adam_beta2: 0.95
+disable_tqdm: false
+max_steps: -1
+max_estimate_samples: 500
+
+### performance
+tensor_model_parallel_size: 1
+pipeline_model_parallel_size: 1
+sharding: stage1
+recompute_granularity: full
+recompute_method: uniform
+recompute_num_layers: 1
+bf16: true
+fp16_opt_level: O2
+
+### checkpoint
+save_checkpoint_format: "flex_checkpoint"
+load_checkpoint_format: "flex_checkpoint"
+
+### stage-specific (8个数据集 + 逆平方根归一化概率)
+train_dataset_path:
+  - ./data/digi-natlib-gen/train.jsonl          
+  - ./data/hf_gen/aida_handwritten/train.jsonl  
+  - ./data/hf_gen/aida_ship_info/train.jsonl    
+  - ./data/hf_gen/aida_typewritten/train.jsonl  
+  - ./data/hf_gen/fin_13k/train.jsonl           
+  - ./data/hf_gen/swe_11k/train.jsonl           
+  - ./data/theseus-gen/train.jsonl              
+  - ./data/nlf_ocr_gen/train.jsonl                  
+
+# 重要：此概率顺序必须严格匹配上方 paths 顺序
+train_dataset_prob: "0.0600,0.1610,0.2260,0.0880,0.1360,0.1480,0.0740,0.1070"
+eval_dataset_prob: "0.0600,0.1610,0.2260,0.0880,0.1360,0.1480,0.0740,0.1070"
+eval_dataset_path:
+  - ./data/digi-natlib-gen/eval.jsonl          
+  - ./data/hf_gen/aida_handwritten/eval.jsonl  
+  - ./data/hf_gen/aida_ship_info/eval.jsonl    
+  - ./data/hf_gen/aida_typewritten/eval.jsonl  
+  - ./data/hf_gen/fin_13k/eval.jsonl           
+  - ./data/hf_gen/swe_11k/eval.jsonl           
+  - ./data/theseus-gen/eval.jsonl              
+  - ./data/nlf_ocr_gen/eval.jsonl                  
+
+num_train_epochs: 3
+learning_rate: 3.0e-4
+output_dir: /root/autodl-fs/lorall

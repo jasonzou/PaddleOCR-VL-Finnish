@@ -22,8 +22,11 @@ from pathlib import Path
 from tqdm import tqdm
 
 
-def levenshtein_distance(pred: str, ref: str) -> int:
-    """Pure-Python Levenshtein distance (fallback)."""
+def levenshtein_distance(pred, ref) -> int:
+    """Pure-Python Levenshtein distance (fallback).
+
+    Works on any sequence (str, list of words, etc.) via duck typing.
+    """
     m, n = len(ref), len(pred)
     dp = list(range(n + 1))
     for i in range(1, m + 1):
@@ -38,7 +41,11 @@ def levenshtein_distance(pred: str, ref: str) -> int:
 
 
 def ned(pred: str, ref: str) -> float:
-    """Normalized edit distance in [0, 1]. 0 = perfect."""
+    """Normalized edit distance in [0, 1]. 0 = perfect.
+
+    Denominator is max(len(pred), len(ref)) so the result is always bounded
+    to [0, 1] regardless of which string is longer.  Both-empty → 0.0.
+    """
     try:
         import Levenshtein
         dist = Levenshtein.distance(pred, ref)
@@ -49,33 +56,46 @@ def ned(pred: str, ref: str) -> float:
 
 
 def cer(pred: str, ref: str) -> float:
-    """Character Error Rate (CER) — Levenshtein distance / reference length."""
+    """Character Error Rate (CER) — Levenshtein distance / reference length.
+
+    CER can exceed 1.0 when the prediction is longer than the reference.
+    When ref is empty: 0.0 if pred is also empty, else 1.0.
+    """
     try:
         import Levenshtein
         dist = Levenshtein.distance(pred, ref)
     except ImportError:
         dist = levenshtein_distance(pred, ref)
     denom = len(ref)
-    return dist / denom if denom > 0 else 0.0
+    if denom == 0:
+        return 0.0 if not pred else 1.0
+    return dist / denom
 
 
 def wer(pred: str, ref: str) -> float:
-    """Word Error Rate (WER) — Levenshtein distance on whitespace-split words."""
+    """Word Error Rate (WER) — Levenshtein distance on whitespace-split words.
+
+    WER can exceed 1.0 when the prediction contains many extra words.
+    When ref has no words: 0.0 if pred also has none, else 1.0.
+    """
     pred_words = pred.split()
     ref_words = ref.split()
+    denom = len(ref_words)
+    if denom == 0:
+        return 0.0 if not pred_words else 1.0
     try:
         import Levenshtein
+        # rapidfuzz-backed Levenshtein supports arbitrary sequences;
+        # old python-Levenshtein only takes strings and raises TypeError.
         dist = Levenshtein.distance(pred_words, ref_words)
-    except ImportError:
-        # Convert to strings for Levenshtein
-        pred_str = " ".join(pred_words)
-        ref_str = " ".join(ref_words)
-        dist = levenshtein_distance(pred_str, ref_str)
-    denom = len(ref_words)
-    return dist / denom if denom > 0 else 0.0
+    except (ImportError, TypeError):
+        # Fall back to pure-Python on the word lists directly (not on the
+        # joined string — that would compute character-level distance, not WER).
+        dist = levenshtein_distance(pred_words, ref_words)
+    return dist / denom
 
 
-def load_results(path: Path) -> list[dict]:
+def load_results(path: Path):
     results = []
     with open(path, encoding="utf-8") as f:
         for lineno, line in enumerate(tqdm(f, desc=path.name, unit="line"), 1):
@@ -88,7 +108,11 @@ def load_results(path: Path) -> list[dict]:
                 print(f"  WARNING: {path}:{lineno}: JSON parse error: {e}", file=sys.stderr)
                 continue
             pred = rec.get("answer", "")
-            label = rec.get("label") or rec.get("messages", [{}] * 2)[1].get("content", "")
+            label = rec.get("label") or ""
+            if not label:
+                msgs = rec.get("messages")
+                if isinstance(msgs, list) and len(msgs) > 1:
+                    label = msgs[1].get("content", "")
             results.append({
                 "pred": pred,
                 "label": label,
@@ -148,27 +172,28 @@ def evaluate(results: list[dict], by_source: bool = False) -> dict:
         },
     }
 
-    # NED buckets
-    buckets = [0.0, 0.05, 0.10, 0.20, 0.30, 0.50, 1.01]
-    bucket_counts = [0] * (len(buckets) - 1)
+    # NED buckets — NED is always in [0, 1] so 1.01 sentinel catches everything.
+    ned_buckets = [0.0, 0.05, 0.10, 0.20, 0.30, 0.50, 1.01]
+    ned_bucket_counts = [0] * (len(ned_buckets) - 1)
     for s in neds:
-        for i in range(len(buckets) - 1):
-            if s < buckets[i + 1]:
-                bucket_counts[i] += 1
+        for i in range(len(ned_buckets) - 1):
+            if s < ned_buckets[i + 1]:
+                ned_bucket_counts[i] += 1
                 break
-    metrics["ned"]["buckets"] = list(zip(buckets, buckets[1:], bucket_counts))
+    metrics["ned"]["buckets"] = list(zip(ned_buckets, ned_buckets[1:], ned_bucket_counts))
 
-    # CER buckets
-    cer_bucket_counts = [0] * (len(buckets) - 1)
+    # CER buckets — CER can exceed 1.0; final bucket catches everything above 1.0.
+    cer_buckets = [0.0, 0.05, 0.10, 0.20, 0.30, 0.50, 1.0, float("inf")]
+    cer_bucket_counts = [0] * (len(cer_buckets) - 1)
     for s in cers:
-        for i in range(len(buckets) - 1):
-            if s < buckets[i + 1]:
+        for i in range(len(cer_buckets) - 1):
+            if s < cer_buckets[i + 1]:
                 cer_bucket_counts[i] += 1
                 break
-    metrics["cer"]["buckets"] = list(zip(buckets, buckets[1:], cer_bucket_counts))
+    metrics["cer"]["buckets"] = list(zip(cer_buckets, cer_buckets[1:], cer_bucket_counts))
 
-    # WER buckets (different range: WER can exceed 1.0)
-    wer_buckets = [0.0, 0.05, 0.10, 0.20, 0.30, 0.50, 1.0, 1.5, 2.0, 5.0, 10.0]
+    # WER buckets — WER can exceed 1.0; final bucket catches everything above 5.0.
+    wer_buckets = [0.0, 0.05, 0.10, 0.20, 0.30, 0.50, 1.0, 1.5, 2.0, 5.0, float("inf")]
     wer_bucket_counts = [0] * (len(wer_buckets) - 1)
     for s in wers:
         for i in range(len(wer_buckets) - 1):
@@ -210,7 +235,7 @@ def _bar(count: int, total: int, width: int = 20) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
-def print_report(name: str, data: dict, verbose: bool = False, worst_n: int = 0) -> None:
+def print_report(name: str, data: dict, verbose: bool = False, worst_n: int = 0, results=None) -> None:
     n = data["n"]
     if n == 0:
         print(f"\n{name}: no results")
@@ -246,13 +271,16 @@ def print_report(name: str, data: dict, verbose: bool = False, worst_n: int = 0)
 
     print(f"\n  CER distribution:")
     for lo, hi, cnt in m["cer"]["buckets"]:
-        label = f"  [{lo:.2f}, {'1.00' if hi > 1 else f'{hi:.2f}'})"
+        hi_str = "∞   " if hi == float("inf") else f"{hi:.2f}"
+        label = f"  [{lo:.2f}, {hi_str})"
         pct = cnt / n * 100
         print(f"    {label:18s} {_bar(cnt, n)} {cnt:6d} ({pct:5.1f}%)")
 
     print(f"\n  WER distribution:")
     for lo, hi, cnt in m["wer"]["buckets"]:
-        if hi <= 1.0:
+        if hi == float("inf"):
+            label = f"  [{lo:.2f}, ∞   )"
+        elif hi <= 1.0:
             label = f"  [{lo:.2f}, {hi:.2f})"
         elif hi <= 5.0:
             label = f"  [{lo:.2f}, {hi:.2f})"
@@ -268,6 +296,19 @@ def print_report(name: str, data: dict, verbose: bool = False, worst_n: int = 0)
                   f"NED={src_data['ned']['mean']:.4f}  "
                   f"CER={src_data['cer']['mean']:.4f}  "
                   f"WER={src_data['wer']['mean']:.4f}")
+
+    if worst_n > 0 and results:
+        scored = sorted(
+            [(ned(r["pred"], r["label"]), r) for r in results],
+            key=lambda x: -x[0],
+        )
+        print(f"\n  Worst {worst_n} predictions (by NED):")
+        for rank, (score, r) in enumerate(scored[:worst_n], 1):
+            pred_snippet = r["pred"][:80].replace("\n", "\\n")
+            label_snippet = r["label"][:80].replace("\n", "\\n")
+            print(f"    {rank:3d}. NED={score:.4f}")
+            print(f"        pred : {pred_snippet}")
+            print(f"        label: {label_snippet}")
 
 
 def main():
@@ -285,12 +326,12 @@ def main():
             continue
         results = load_results(path)
         data = evaluate(results, by_source=args.by_source)
-        print_report(path.name, data, verbose=args.verbose, worst_n=args.worst)
+        print_report(path.name, data, verbose=args.verbose, worst_n=args.worst, results=results)
         all_results.extend(results)
 
     if len(args.files) > 1 and all_results:
         combined = evaluate(all_results, by_source=args.by_source)
-        print_report(f"COMBINED ({len(args.files)} files)", combined, worst_n=args.worst)
+        print_report(f"COMBINED ({len(args.files)} files)", combined, worst_n=args.worst, results=all_results)
 
 
 if __name__ == "__main__":

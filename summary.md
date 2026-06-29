@@ -1,7 +1,6 @@
-# PaddleOCR-VL-Finnish — Project Summary
-
-### Overview
-**PaddleOCR-VL-Finnish** fine-tunes **PaddleOCR-VL-1.5** (a Vision-Language OCR model) for Finnish language text recognition using **LoRA** supervised fine-tuning, built for the **Paddle Global Model Derivative Competition**.
+# Finnish OCR 
+## Overview
+**PaddleOCR-VL-Finnish** is a fine-tune model on **PaddleOCR-VL-1.5** (a Vision-Language OCR model) for Finnish language text recognition using **LoRA** fine-tuning, and **dpo** (Direct Preference Optimization).
 
 ---
 
@@ -12,19 +11,40 @@ We try the following ways to prepare the data:
 - Synthesis data
   - Search for open datasets
   - Search for Finnish OCR research papers, then identify datasets used in the papers and access the datasets
+  - Evaluate datasets
+  - Select datasets
+  - Clean/Convert datasets
 
-### 1.1 Synthetic data
+### 1.0 Dataset selection rationale
 
-I identify popular Finnish fonts along with the top 10 Finnish datasets on Huggingface. Randomly selected Finnish fonts applying to the retrieved content from the top 10 Finnish datasets, a synthetic dataset is generated for the very first stage of fine-tuning. The purpose of this stage is to enhance the model with Finnish diacritics (å, ä, ö).
+| Source | Rationale |
+|--------|-----------|
+| **AIDA (handwritten, typewritten, ship-info)** | Largest open-source Finnish OCR dataset from Kansallisarkisto (National Archives of Finland). Covers three distinct visual domains — handwritten historical documents, typewritten records, and ship-manifest tables — from a single source. The original dataset also contained synthetic data which was removed because we generate our own synthetic data with better typographic control. |
+| **fin-13k / swe-11k** | Discovered through a literature review of Finnish OCR papers. fin-13k adds further real Finnish text-line diversity. swe-11k (Swedish) is included because Swedish is Finland's second official language, shares ä/ö diacritics, and the visual domain (historical newspapers) complements the Finnish datasets. |
+| **Digi-Natlib (nodalida2017)** | From the Nodalida 2017 competition — widely referenced in Finnish OCR research papers. Contains digitised Finnish newspapers (digi, ~12k records) and National Library catalogue cards (natlib, ~54k records), each with aligned binarised images and ground-truth text. Two distinct visual styles (newsprint columns vs. library cards) in one source. |
+| **Theseus** | Theseus.fi is the central thesis/dissertation repository for all Finnish universities of applied sciences, holding 340k+ PDFs. Chosen over other Finnish Language Bank sources because it supports OAI-PMH protocol for systematic harvesting and PDF page image rendering is straightforward. Provides academic Finnish prose at page and paragraph granularity — complementing the predominantly line-level datasets above. |
+| **NLF OCR Ground Truth** | National Library of Finland OCR ground-truth dataset (~500k records), from digi.kansalliskirjasto.fi/opendata. Includes Finnish and Swedish documents with ALTO XML annotations (per-word bounding boxes) and high-resolution TIFF scans. Multi-column newspaper layouts (1-col through 4-col) provide essential layout-reading diversity that line-level datasets lack. |
 
-### 1.2 Search for open datasets
+More importantly, some extra mechnisms have been used to ensure the quality of datasets.
+1. For each dataset, we went through randomly selection 100 records, and manually checked the selected records until all selected records have no issues.
+2. For theseus, we used two OCR models (mineru and glm-ocr) to help. Only if the extracted content is matching to the outputs of mineru and glm-ocr, then the extracted content is included. Although in this way, some more difficult sitations are ignored, the quality of the dataset is garanteed.
+
+### Procedures - Search for open datasets
 
 I found https://huggingface.co/datasets/Kansallisarkisto/AIDA_ocr_training_data dataset. However, this dataset was created years ago. The dataset consists of synthesis data, typewritten, and handwritten data. In addition, the format of the data needs to be changed for this project. I removed the synthesis data and changed the format, then created three datasets on Huggingface:
 - https://huggingface.co/datasets/caveman273/aida-handwritten
 - https://huggingface.co/datasets/caveman273/aida-typewritten
 - https://huggingface.co/datasets/caveman273/aida-ship-info
 
-### 1.3 Search for Finnish OCR research papers
+**Selection rationale:** AIDA is the largest open-source Finnish OCR dataset from the National Archives. Its three sub-components cover distinct visual domains (handwriting, typewriting, tabular data), providing complementary training signals.
+
+**Cleanup method:**
+- Original synthetic sub-component of AIDA removed (redundant with our own synth pipeline in 1.1).
+- Schema normalised to `{text, image, file_name}` — column names are auto-detected among common variants (text/transcript/label/ground_truth, image/img/image_path, file_name/filename/id).
+- Non-existent image paths and non-string text entries are skipped.
+- All images normalised to PNG bytes for consistent serialisation.
+
+### Procedures - Search for Finnish OCR research papers
 
 Literature search for Finnish OCR research papers was carried out. From various papers, five datasets were identified. After cleaning up and formatting, I created the following on Huggingface:
 - https://huggingface.co/datasets/caveman273/fin-13k
@@ -33,89 +53,102 @@ The other two can be downloaded from
 - https://github.com/sdrobac/nodalida2017
 - https://digi.kansalliskirjasto.fi/opendata/submit
 
-The build_ocr_dataset.py can generate suitable dataset files (compatible with Huggingface datasets).
+**Selection rationale:** Academic papers on Finnish OCR cite these datasets as established benchmarks. fin-13k provides additional real Finnish text-line images. swe-11k covers Swedish (Finland's second official language, sharing ä/ö diacritics). The nodalida2017 dataset provides digitised Finnish newspapers and National Library catalogue cards. NLF ground truth (digi.kansalliskirjasto.fi) is the largest annotated Finnish OCR corpus available.
 
-### 1.4 Other data sources
+**Cleanup method:**
+- fin-13k / swe-11k: Reformatted to HF datasets format with consistent {text, image, file_name} schema. Same auto-detected column conventions as AIDA.
+- digi-natlib: Binary (.bin.png) / ground-truth (.gt.txt) pairs with empty text are skipped. Unique filenames constructed via `source__split__stem.png` to avoid cross-directory name collisions.
+- NLF: Detailed cleanup below in section 1.6.
+
+### Procedures - Other data sources
 The Finnish Language bank was examined. The theseui.fi (theses and dissertation repository for Finnish Universities) was chosen as another data source because this site has over 340k PDF files, and it is relatively easier to convert PDF files to OCR datasets.
 
-The site supports the OAI-PMH protocol. PDF files can be downloaded via OAI-PMH. 
+The site supports the OAI-PMH protocol. PDF files can be downloaded via OAI-PMH.
 
-### 1.5 Summary
+**Selection rationale:** Theseus provides academic Finnish prose — a text domain absent from the predominantly newspaper/library datasets above. With 340k+ PDFs available through a standard protocol (OAI-PMH), it offers scalable, reproducible data acquisition.
 
-Each dataset has been formatted as { "text", "image", "file_name"}.
+**Cleanup method:**
+- Pages with < 2 text lines → skipped (insufficient content for paragraph extraction).
+- Paragraph crops with < 2 text lines → skipped.
+- Per-page paragraph extraction: full-page image saved (type=page), then up to 5 paragraph crops created by partitioning text-line regions (type=paragraph).
+- PDFs rendered at 300 DPI for OCR-quality resolution.
+- MuPDF structure-tree diagnostics suppressed (harmless for Theseus PDFs but noisy).
+- Filename collisions prevented by prefixing with PDF-internal item ID. 
+
+### Procedures - NLF OCR ground-truth 
+
+NLF OCR ground-truth data undergoes the most thorough cleaning pipeline:
+
+- **Unannotated scans**: TIF files without a corresponding `-gt2.xml` are silently skipped (unannotated scans exist in the dataset).
+- **Page-level filtering**: ALTO XML is parsed for `<Page>`, `<TextBlock>`, and `<TextLine>` elements. Pages with zero text blocks or missing dimensions are skipped.
+- **Column detection** (`_nlf_detect_columns`):
+  - Blocks wider than 65% of the page width are treated as full-width (titles, headings) and assigned to column 0.
+  - Small decorative blocks (page numbers, running headers) — defined as blocks with < 2 text lines AND height < 5% of the page — are excluded from column-boundary detection but still assigned to reading-order columns.
+  - A "gutter" boundary between columns is detected when the gap between consecutive block x-centres exceeds 12% of the page width.
+  - Supports any number of columns: 1-col, 2-col, 3-col, 4-col newspaper layouts.
+- **Reading-order reconstruction**: Blocks are sorted by (column_id, then top-to-bottom y-position), ensuring correct text flow across multi-column pages.
+- **Paragraph crop generation**: For each column, sliding windows of 1 to N consecutive text blocks are combined into paragraph crops. A minimum of 20 characters per paragraph is enforced. Duplicate paragraph texts (exact match) are de-duplicated per page. Up to 10 paragraph crops are extracted per column to prevent over-sampling visually repetitive regions.
 
 
-| dataset  | Descriptions | 
-|---------- |----------------|
-| Synth-Font Scale | 50 k records 
-| typewritten | 31.3 k records |
-| handwritten | 9.36 k records |
-| ship-info | 4.74 k records |
-| fin-13k | 13 k records |
-| swe-11k | 11 k records |
-| theseus | 50 k records |
-| digi-data | 12.4 k records |
-| natlib-data | 54 k records |
-| nlf ocr groud truth | 500 k records |
+## Datasets
 
-## 2. Fine-tuning
+| # | Dataset | Source | Type | Train size | Test size | Description |
+|---|---------|--------|------|------------|-----------|-------------|
+| 1 | aida-typewritten | caveman273/aida-typewritten (HF) | Text line | 31,300 | 4,272 | Typewritten business documents from the AIDA (Archive of Finnish Business Documents). Machine-typed legacy Finnish corporate/administrative text. |
+| 2 | aida-handwritten | caveman273/aida-handwritten (HF) | Text line | 9,360 | 1,270 | Handwritten business documents from the AIDA archive. Cursive and hand-printed Finnish text on various paper types. |
+| 3 | aida-ship-info | caveman273/aida-ship-info (HF) | Text line | 4,740 | 472 | Ship information records from the AIDA archive. Tabular/semi-structured maritime records with typed Finnish text. |
+| 4 | fin-13k | caveman273/fin-13k (HF) | Text line | 13,000 | 653 | Finnish text image dataset. Diverse Finnish-language text lines extracted from scanned documents. |
+| 5 | swe-11k | caveman273/swe-11k (HF) | Text line | 11,000 | 556 | Swedish text image dataset. Swedish-language text lines from digitized archives, useful for bilingual Finnish-Swedish OCR. |
+| 6 | digi-natlib | sdrobac/nodalida2017 (GitHub) | Text line | 66,400 | 3,327 | Digitized Finnish newspapers (digi: 12.4k) and National Library catalogue cards (natlib: 54k) with ground truth. Published as part of Nodalida 2017. |
+| 7 | theseus | theseus.fi (OAI-PMH) | Page / Paragraph | 44,500 | 2,230 | Finnish academic theses harvested via OAI-PMH from Theseus.fi. PDFs downloaded, rendered at 300 DPI; full-page images + paragraph crops (up to 5 per page) extracted via pdfplumber + PyMuPDF. |
+| 8 | nlf-ocr | National Library of Finland | Page / Paragraph | 21,200 | 1,079 | NLF OCR ground-truth from ALTO XML + TIFF pairs. Finnish (`nlf_fi`) and Swedish (`nlf_sv`) collections. Full-page images + paragraph crops from ALTO TextBlock annotations with automatic multi-column layout detection. |
+## Approach
 
-A **6-stage curriculum** with LoRA on PaddleOCR-VL-1.5 using PaddleFormers framework. Finnish is natively supported (111 languages) — no tokeniser modifications needed.
+Multi-dataset LoRA fine-tuning using Inverse Square Root Frequency sampling
 
-### 2.1 Framework Configuration
+### Inverse Square Root Frequency Sampling
 
-| Aspect | Value |
-|--------|-------|
-| Sequence length | 16384 |
-| Padding-free | True (NaViT dynamic resolution) |
-| LoRA rank | 8 (default; varies per stage: 16 → 8 → 4) |
-| Optimiser | AdamW β1=0.9, β2=0.95, wd=0.1 |
-| Mixed precision | bf16 |
-| Evaluation metric | NED (Normalised Edit Distance) |
-| Template | `paddleocr_vl_v15` + custom plugin |
+Instead of naively repeating files, sampling weights are defined at the DataLoader level: P(dataset) ∝ 1/√N.
 
-### 2.2 Multi-Stage Curriculum
+This formula is the gold standard for balancing "sufficient learning" with "preventing overfitting" (used in GPT multilingual training). It avoids the pitfalls of both:
+- **1/N weighting**: inflates small-dataset weights too aggressively (→ overfitting)
+- **Direct concatenation**: allows large datasets to drown out small ones
 
-| Stage | Dataset(s) | Prob | Epochs | Learning Rate | Resume From |
-|-------|-----------|------|--------|--------------|-------------|
-| 0 – Synthetic Warm-up | synth-fonts (50k) | 1.0 | 3 | 1e-4 | PaddleOCR-VL-1.5 |
-| 1 – Foundation | hf (57k) | 1.0 | 5 | 5e-4 | stage0_synth |
-| 2 – Digi-Natlib | digi-natlib + hf | 0.8, 0.2 | 3 | 2.5e-4 | stage1_hf |
-| 3 – NLF | nlf + hf + digi-natlib | 0.5, 0.25, 0.25 | 3 | 1e-4 | stage2_digi |
-| 4 – Theseus Pages | theseus + hf + digi-natlib + nlf | 0.7, 0.1, 0.1, 0.1 | 3 | 5e-5 | stage3_nlf |
-| 5 – Balanced Mix | hf + digi-natlib + nlf + theseus | 0.25 each | 4 | 5e-5 | stage4_theseus |
+Precise normalized weights for the 8 real datasets (ready for config):
 
-**Probability rationale:**
-- **Stage 0–1**: Single dataset, no replay needed (pure foundation/synthetic)
-- **Stage 2**: 80/20 split — prioritise new domain (digi-natlib) while replaying hf to prevent catastrophic forgetting
-- **Stage 3**: 50/25/25 — nlf is a large new domain (328k), gets majority weight; equal replay of prior domains maintains their performance
-- **Stage 4**: 70/10/10/10 — theseus is a new domain (pages/blocks vs textlines), heavy focus with small replay to retain previous domain knowledge
-- **Stage 5**: 25/25/25/25 — final balanced mix to harmonise all domains at equal weight
+| Dataset | Samples | Weight (1/√N) | Normalized prob |
+|---------|---------|---------------|-----------------|
+| digi-natlib-gen  | 66,518 | 0.00388 | 6.0%  (raw 33.0%) |
+| theseus-gen      | 44,591 | 0.00473 | 7.4%  (raw 22.1%) |
+| aida_typewritten | 31,272 | 0.00566 | 8.8%  (raw 15.5%) |
+| nlf-ocr          | 21,200 | 0.00687 | 10.7% (raw 10.5%) |
+| aida_handwritten | 9,367  | 0.01033 | 16.1% (raw 4.6%)  |
+| swe_11k          | 11,097 | 0.00950 | 14.8% (raw 5.5%)  |
+| fin_13k          | 13,040 | 0.00876 | 13.6% (raw 6.5%)  |
+| aida_ship_info   | 4,740  | 0.01453 | 22.6% (raw 2.4%)  |
 
-### 2.3 Target NED Values
+**Result:** aida_ship_info exposure is boosted from a meager 2.4% to 22.6%. Because sampling is random with replacement, the model sees a re-sampled combination of its original 4.7k images each epoch — never the same physical repetition that would cause the model to memorize a few thousand images (overfitting).
 
-| Domain | Target NED |
-|--------|-----------|
-| hf | < 0.05 |
-| digi-natlib | < 0.08 |
-| nlf | < 0.10 |
-| theseus | < 0.12 |
+## Results
+### NED
+| Dataset | Baseline | Lora | 
+|---------|----------|------|-
+| aida-typewritten  | 0.0530 | 0.0266 |
+| aida-handwritten  | 0.3840 | 0.1412 |
+| aida-ship-info    | 0.1538 | 0.0490 |
+| fin-13k           | 0.1654 | 0.0606 |
+| swe-11k           | 0.1389 | 0.0840 |
+| digi-natlib       | 0.2201 | 0.1150 |
+| theseus           | 0.6952 | —      | 
+| nlf-ocr           | —      | 0.4804 |
 
-### 2.5 Fine-Tune Parameters
 
-| Stage | LoRA rank | LoRA alpha | Learning Rate | Epochs | Rationale |
-|-------|-----------|------------|--------------|--------|-----------|
-| 0 – Synthetic Warm-up | 16 | 16 | 1e-4 | 3 | High rank for rapid Finnish diacritic (å, ä, ö) adaptation on clean synthetic data |
-| 1 – Foundation | 8 | 16 | 5e-4 | 5 | Halve rank after warm-up; higher LR for quick domain adaptation |
-| 2 – Digi-Natlib | 8 | 8 | 2.5e-4 | 3 | Reduced alpha/rank ratio (1:1) for conservative updates on noisy real documents |
-| 3 – NLF | 8 | 8 | 1e-4 | 3 | Stable config; lower LR as adapter already captures Finnish patterns |
-| 4 – Theseus Pages | 4 | 8 | 5e-5 | 3 | Minimal rank for small domain; lowest LR to preserve prior knowledge |
-| 5 – Balanced Mix | 4 | 8 | 5e-5 | 4 | Final harmonisation; equal mix needs gentle updates |
-
-**Shared training parameters:**
+### Training Configuration
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
+| LoRA rank/alpha | 8/8 | Conservative updates on noisy real documents |
+| Learning Rate | 3e-4 | Balanced for multi-dataset fine-tuning |
 | Optimiser | AdamW β1=0.9, β2=0.95 | Standard for transformer fine-tuning |
 | Weight decay | 0.1 | Regularises LoRA matrices; prevents large adapter values |
 | Warmup ratio | 0.1 | Stabilises early training; prevents gradient spikes |
@@ -124,19 +157,7 @@ A **6-stage curriculum** with LoRA on PaddleOCR-VL-1.5 using PaddleFormers frame
 | Mixed precision | bf16 | Matches base model precision; reduces memory |
 | Seed | 23 | Reproducibility across runs |
 
-**Why reduce rank and LR across stages?**
-- Early stages need higher capacity to learn Finnish grapheme shapes and textline geometry
-- Later stages focus on adapting to new domains (digi-natlib, nlf, theseus) — less capacity needed as the adapter already captures Finnish patterns
-- Lower rank and LR in later stages reduces catastrophic forgetting of earlier domain knowledge
-
-### 3. Training Data Construction Rigor 
-
-- **Collection process**: Sources traced to HuggingFace (`caveman273/aida-*`) and Nodalida 2017 competition (GitHub `sdrobac/nodalida2017`); reproducible scripts (`build_ocr_dataset.py`)
-- **Annotation completeness**: Schema documented (`file_name`, `text`, `image`); pipeline produces parquet → JSONL with embedded images
-- **Quality control**: Dataset checked via `check_dataset.py`; evaluation metrics (NED, CER, WER) used to validate model quality
-- **Data analysis**: Statistics generated by `check_dataset.py`; README reports base vs. LoRA performance breakdown
-
-### 4. Image Augmentation in the Fine-Tuning Pipeline
+### Image Augmentation
 
 PaddleOCR-VL-1.5 uses a **NaViT-style dynamic-resolution vision encoder** — no manual image resizing is needed. The model automatically resizes images to optimal multiple-of-patch-size dimensions via `get_smarted_resize`.
 
@@ -163,7 +184,8 @@ Two modes — **classic** (per-entry `p` gate) and **policy-driven** (two-layer 
 
 **Sequence length filtering**: With max_seq_len=16384, extremely wide images can generate excessive vision tokens. A character limit of **1200 characters** per sample is applied to prevent token overflow. Samples exceeding this limit are discarded (ground truth is never truncated). 
 
-### 5. Preliminary Demo
+### Demo
 
 - The model was released at Huggingface: https://huggingface.co/caveman273/ppocrvl-v1.5-finnish
 - The demo site is hosted at Huggingface: https://caveman273-paddleocrvl-v1-5-finnish.hf.space/
+- A Finnish OCR Evaluation dataset (14k) was released at Huggingface: https://huggingface.co/datasets/caveman273/Finnish-OCR-evaluation

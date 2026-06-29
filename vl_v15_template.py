@@ -35,7 +35,7 @@ class GaussianNoise:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: GaussianNoise (std={})", self.std)
+#         logger.info("apply: GaussianNoise (std={})", self.std)
         arr = np.array(img.convert("RGB")).astype(np.float32)
         arr = np.clip(arr + np.random.normal(self.mean, self.std, arr.shape), 0, 255)
         return Image.fromarray(arr.astype(np.uint8))
@@ -51,7 +51,7 @@ class GaussianBlur:
         if random.random() >= self.p:
             return img
         radius = random.uniform(*self.radius_range)
-        logger.info("apply: GaussianBlur (radius={:.2f})", radius)
+#         logger.info("apply: GaussianBlur (radius={:.2f})", radius)
         return img.convert("RGB").filter(ImageFilter.GaussianBlur(radius=radius))
 
 
@@ -66,7 +66,7 @@ class JpegCompression:
             return img
         buf = io.BytesIO()
         quality = random.randint(*self.quality_range)
-        logger.info("apply: JpegCompression (quality={})", quality)
+#         logger.info("apply: JpegCompression (quality={})", quality)
         img.convert("RGB").save(buf, format="JPEG", quality=quality)
         buf.seek(0)
         return Image.open(buf).copy()
@@ -100,7 +100,7 @@ class ColorJitter:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: ColorJitter (b={}, c={}, s={}, h={})",
+#         logger.info("apply: ColorJitter (b={}, c={}, s={}, h={})",
                      self.brightness, self.contrast, self.saturation, self.hue)
         img = img.convert("RGB")
         for enhancer_cls, strength in [
@@ -133,7 +133,7 @@ class Curve:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: Curve (period={}, amplitude={})", self.period, self.amplitude)
+#         logger.info("apply: Curve (period={}, amplitude={})", self.period, self.amplitude)
         img = img.convert("RGB")
         arr = np.array(img)
         h, w = arr.shape[:2]
@@ -158,7 +158,7 @@ class DropoutHorizontal:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: DropoutHorizontal (num_line={}, thickness={})", self.num_line, self.thickness)
+#         logger.info("apply: DropoutHorizontal (num_line={}, thickness={})", self.num_line, self.thickness)
         img = img.convert("RGB")
         if img.height <= self.thickness + 1:
             return img
@@ -180,7 +180,7 @@ class DropoutVertical:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: DropoutVertical (num_line={}, thickness={})", self.num_line, self.thickness)
+#         logger.info("apply: DropoutVertical (num_line={}, thickness={})", self.num_line, self.thickness)
         img = img.convert("RGB")
         if img.width <= self.thickness + 1:
             return img
@@ -202,7 +202,7 @@ class DropoutRand:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: DropoutRand (dropout_p={})", self.dropout_p)
+#         logger.info("apply: DropoutRand (dropout_p={})", self.dropout_p)
         img = img.convert("RGB")
         arr = np.array(img).copy()
         h, w = arr.shape[:2]
@@ -227,7 +227,7 @@ class LineOverlay:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: LineOverlay (thickness={})", self.thickness)
+#         logger.info("apply: LineOverlay (thickness={})", self.thickness)
         img = img.convert("RGB")   # convert() returns a new image; .copy() would be redundant
         draw = ImageDraw.Draw(img)
         # random.randint is inclusive on both ends; np.random.randint would exclude the upper bound
@@ -256,7 +256,7 @@ class ImagePadding:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: ImagePadding (w_ratio={}, h_ratio={}, center={})",
+#         logger.info("apply: ImagePadding (w_ratio={}, h_ratio={}, center={})",
                      self.w_ratio, self.h_ratio, self.center)
         img = img.convert("RGB")   # strip alpha so paste onto RGB canvas is correct
         w_ratio = random.uniform(*self.w_ratio)
@@ -283,7 +283,7 @@ class TextBorder:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: TextBorder (border_width={})", self.border_width)
+#         logger.info("apply: TextBorder (border_width={})", self.border_width)
         if not _SCIPY_AVAILABLE:
             return img
         img_rgba = img.convert("RGBA")
@@ -316,7 +316,7 @@ class AlbumentationsMotionBlur:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: AlbumentationsMotionBlur (blur_limit={})", self.blur_limit)
+#         logger.info("apply: AlbumentationsMotionBlur (blur_limit={})", self.blur_limit)
         img = img.convert("RGB")
         arr = np.array(img)
         # Pick an odd kernel size uniformly in [3, 2*blur_limit+1].
@@ -349,7 +349,7 @@ class AlbumentationsGridDistortion:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: AlbumentationsGridDistortion (steps={}, limit={})",
+#         logger.info("apply: AlbumentationsGridDistortion (steps={}, limit={})",
                      self.num_steps, self.distort_limit)
         img = img.convert("RGB")
         arr = np.array(img)
@@ -388,7 +388,7 @@ class AlbumentationsOpticalDistortion:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: AlbumentationsOpticalDistortion (distort_limit={})", self.distort_limit)
+#         logger.info("apply: AlbumentationsOpticalDistortion (distort_limit={})", self.distort_limit)
         img = img.convert("RGB")
         arr = np.array(img)
         h, w = arr.shape[:2]
@@ -414,7 +414,7 @@ class AlbumentationsISONoise:
     def __call__(self, img: Image.Image) -> Image.Image:
         if random.random() >= self.p:
             return img
-        logger.info("apply: AlbumentationsISONoise (intensity={})", self.intensity)
+#         logger.info("apply: AlbumentationsISONoise (intensity={})", self.intensity)
         img = img.convert("RGB")
         arr = np.array(img).astype(np.float32) / 255.0
         intensity = random.uniform(*self.intensity)
@@ -548,7 +548,7 @@ class MaskRandomBlock:
         else:
             effective_ratio = self.region_ratio if self.region_ratio is not None else self.mask_ratio
             coords = _generate_mask_coords(img_bgr, self.coord_mode, effective_ratio, self.num_regions)
-        logger.info("apply: MaskRandomBlock (coord_mode={}, coords={})", self.coord_mode if self.coords is None else "explicit", coords)
+#         logger.info("apply: MaskRandomBlock (coord_mode={}, coords={})", self.coord_mode if self.coords is None else "explicit", coords)
         masked = apply_text_mask_to_region(img_bgr, coords, self.mask_ratio, "random_block")
         return Image.fromarray(masked[:, :, ::-1])
 
@@ -574,7 +574,7 @@ class MaskRandomPixel:
         else:
             effective_ratio = self.region_ratio if self.region_ratio is not None else self.mask_ratio
             coords = _generate_mask_coords(img_bgr, self.coord_mode, effective_ratio, self.num_regions)
-        logger.info("apply: MaskRandomPixel (coord_mode={}, coords={})", self.coord_mode if self.coords is None else "explicit", coords)
+#         logger.info("apply: MaskRandomPixel (coord_mode={}, coords={})", self.coord_mode if self.coords is None else "explicit", coords)
         masked = apply_text_mask_to_region(img_bgr, coords, self.mask_ratio, "random_pixel")
         return Image.fromarray(masked[:, :, ::-1])
 
@@ -601,7 +601,7 @@ class MaskGaussianNoise:
         else:
             effective_ratio = self.region_ratio if self.region_ratio is not None else self.mask_ratio
             coords = _generate_mask_coords(img_bgr, self.coord_mode, effective_ratio, self.num_regions)
-        logger.info("apply: MaskGaussianNoise (coord_mode={}, std={})", self.coord_mode if self.coords is None else "explicit", self.std)
+#         logger.info("apply: MaskGaussianNoise (coord_mode={}, std={})", self.coord_mode if self.coords is None else "explicit", self.std)
         masked = apply_text_mask_to_region(img_bgr, coords, self.mask_ratio, "gaussian_noise", gaussian_std=self.std)
         return Image.fromarray(masked[:, :, ::-1])
 
@@ -627,7 +627,7 @@ class MaskSaltPepper:
         else:
             effective_ratio = self.region_ratio if self.region_ratio is not None else self.mask_ratio
             coords = _generate_mask_coords(img_bgr, self.coord_mode, effective_ratio, self.num_regions)
-        logger.info("apply: MaskSaltPepper (coord_mode={}, coords={})", self.coord_mode if self.coords is None else "explicit", coords)
+#         logger.info("apply: MaskSaltPepper (coord_mode={}, coords={})", self.coord_mode if self.coords is None else "explicit", coords)
         masked = apply_text_mask_to_region(img_bgr, coords, self.mask_ratio, "salt_pepper")
         return Image.fromarray(masked[:, :, ::-1])
 
@@ -654,7 +654,7 @@ class MaskBlur:
         else:
             effective_ratio = self.region_ratio if self.region_ratio is not None else self.mask_ratio
             coords = _generate_mask_coords(img_bgr, self.coord_mode, effective_ratio, self.num_regions)
-        logger.info("apply: MaskBlur (coord_mode={}, radius={})", self.coord_mode if self.coords is None else "explicit", self.radius)
+#         logger.info("apply: MaskBlur (coord_mode={}, radius={})", self.coord_mode if self.coords is None else "explicit", self.radius)
         kwargs = {}
         if self.radius is not None:
             kwargs["blur_radius"] = self.radius
@@ -684,7 +684,7 @@ class MaskMosaic:
         else:
             effective_ratio = self.region_ratio if self.region_ratio is not None else self.mask_ratio
             coords = _generate_mask_coords(img_bgr, self.coord_mode, effective_ratio, self.num_regions)
-        logger.info("apply: MaskMosaic (coord_mode={}, size={})", self.coord_mode if self.coords is None else "explicit", self.size)
+#         logger.info("apply: MaskMosaic (coord_mode={}, size={})", self.coord_mode if self.coords is None else "explicit", self.size)
         kwargs = {}
         if self.size is not None:
             kwargs["mosaic_size"] = self.size
@@ -790,7 +790,7 @@ class CustomRandomApply:
             self._rng.shuffle(fns)
 
         fn_names = [getattr(fn, "__name__", type(fn).__name__) for fn in fns]
-        logger.info("CustomRandomApply: p={:.2f} fired, applying {}", self.p, fn_names)
+#         logger.info("CustomRandomApply: p={:.2f} fired, applying {}", self.p, fn_names)
 
         for fn in fns:
             try:
@@ -886,7 +886,7 @@ def load_aug_config(config):
                 "Install it with:  pip install pyyaml"
             ) from exc
         with open(config) as fh:
-            logger.info("load_aug_config: loaded from file ({})", fh.name)
+#             logger.info("load_aug_config: loaded from file ({})", fh.name)
             config = yaml.safe_load(fh)
     if isinstance(config, dict):
         config = config.get("augmentations", [])
@@ -923,7 +923,7 @@ def load_aug_policy(config) -> Optional[dict]:
     if isinstance(raw, dict):
         policy = raw.get("augmentation_policy")
         if policy:
-            logger.info("load_aug_policy: policy found (strategy={}, num_transforms={})",
+#             logger.info("load_aug_policy: policy found (strategy={}, num_transforms={})",
                         policy.get("strategy", "uniform"), policy.get("num_transforms"))
         return policy
     logger.debug("load_aug_policy: no policy section found, using classic mode")
@@ -1081,7 +1081,7 @@ class PolicyAugmentationPipeline:
             return img
 
         names = [self._entries[i]["name"] for i in indices]
-        logger.info("policy_pipeline: applying {} transforms: {}", len(indices), names)
+#         logger.info("policy_pipeline: applying {} transforms: {}", len(indices), names)
 
         for i in indices:
             transform = self._transform_cache.get(i)
@@ -1128,12 +1128,17 @@ class PaddleOCRVLV15Plugin(BasePlugin):
                 entries=self._aug_entries,
                 policy=self._aug_policy,
             )
-            logger.info("PaddleOCRVLV15Plugin: policy mode ({} entries, strategy={})",
+#             logger.info("PaddleOCRVLV15Plugin: policy mode ({} entries, strategy={})",
                         len(self._aug_entries or []), self._aug_policy.get("strategy", "uniform"))
         else:
             self.image_augmentation = self.get_ocr_augmentations()
-            logger.info("PaddleOCRVLV15Plugin: classic mode ({} entries)",
+#             logger.info("PaddleOCRVLV15Plugin: classic mode ({} entries)",
                         len(self._aug_entries or []))
+
+        aug_mode = os.environ.get("AUG_MODE", "train").lower()
+        self._aug_active = aug_mode not in ("eval", "off", "0", "false", "no", "inference")
+        if not self._aug_active:
+#             logger.info("PaddleOCRVLV15Plugin: augmentation DISABLED (AUG_MODE={})", aug_mode)
 
     def get_ocr_augmentations(self):
         """Build a ``transforms.Compose`` pipeline from ``self._aug_entries``.
@@ -1170,7 +1175,7 @@ class PaddleOCRVLV15Plugin(BasePlugin):
                      width, height, resized_width, resized_height,
                      type(self.image_augmentation).__name__ if self.image_augmentation else None)
 
-        if self.image_augmentation is not None:
+        if self.image_augmentation is not None and self._aug_active:
             image = self.image_augmentation(image)
 
         return image
