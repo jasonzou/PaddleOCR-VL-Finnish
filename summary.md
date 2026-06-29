@@ -139,8 +139,8 @@ Precise normalized weights for the 8 real datasets (ready for config):
 | fin-13k           | 0.1654 | 0.0606 |
 | swe-11k           | 0.1389 | 0.0840 |
 | digi-natlib       | 0.2201 | 0.1150 |
-| theseus           | 0.6952 | —      | 
-| nlf-ocr           | —      | 0.4804 |
+| theseus           | 0.6952 | 0.3408 | 
+| nlf-ocr           | 0.9037 | 0.4804 |
 
 
 ### Training Configuration
