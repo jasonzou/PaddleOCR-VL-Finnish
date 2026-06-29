@@ -129,18 +129,6 @@ Precise normalized weights for the 8 real datasets (ready for config):
 
 **Result:** aida_ship_info exposure is boosted from a meager 2.4% to 22.6%. Because sampling is random with replacement, the model sees a re-sampled combination of its original 4.7k images each epoch — never the same physical repetition that would cause the model to memorize a few thousand images (overfitting).
 
-## Results
-### NED
-| Dataset | Baseline | Lora | 
-|---------|----------|------|-
-| aida-typewritten  | 0.0530 | 0.0266 |
-| aida-handwritten  | 0.3840 | 0.1412 |
-| aida-ship-info    | 0.1538 | 0.0490 |
-| fin-13k           | 0.1654 | 0.0606 |
-| swe-11k           | 0.1389 | 0.0840 |
-| digi-natlib       | 0.2201 | 0.1150 |
-| theseus           | 0.6952 | 0.3408 | 
-| nlf-ocr           | 0.9037 | 0.4804 |
 
 
 ### Training Configuration
@@ -183,6 +171,22 @@ Two modes — **classic** (per-entry `p` gate) and **policy-driven** (two-layer 
 | **Geometric** | `ImagePadding`, `LineOverlay`, `TextBorder` |
 
 **Sequence length filtering**: With max_seq_len=16384, extremely wide images can generate excessive vision tokens. A character limit of **1200 characters** per sample is applied to prevent token overflow. Samples exceeding this limit are discarded (ground truth is never truncated). 
+
+## Results
+### NED
+| Dataset | Baseline | Lora | 
+|---------|----------|------|-
+| aida-typewritten  | 0.0530 | 0.0266 |
+| aida-handwritten  | 0.3840 | 0.1412 |
+| aida-ship-info    | 0.1538 | 0.0490 |
+| fin-13k           | 0.1654 | 0.0606 |
+| swe-11k           | 0.1389 | 0.0840 |
+| digi-natlib       | 0.2201 | 0.1150 |
+| theseus           | 0.6952 | 0.3408 | 
+| nlf-ocr           | 0.9037 | 0.4804 |
+
+### Future directions
+DPO (Direct Preference Optimization) was evaluated. Due to the differences between datasets, constructing DPO pairs is challenging. More exploration is needed, so it is not included.
 
 ### Demo
 
