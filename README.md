@@ -175,7 +175,7 @@ Two modes — **classic** (per-entry `p` gate) and **policy-driven** (two-layer 
 ## Results
 ### NED
 | Dataset | Baseline | Lora | 
-|---------|----------|------|-
+|---------|----------|------|
 | aida-typewritten  | 0.0530 | 0.0266 |
 | aida-handwritten  | 0.3840 | 0.1412 |
 | aida-ship-info    | 0.1538 | 0.0490 |
